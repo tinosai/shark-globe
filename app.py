@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ocean Mapper, as a Mac app.
+Shark Globe, as a Mac app.
 
 Runs the server on a free port, opens the globe in your browser, and lives in the
 menu bar so there's an obvious way to quit it. That last part is the whole reason
@@ -11,7 +11,7 @@ The browser does the rendering, deliberately. Safari and Chrome have mature
 WebGL2; an embedded webview is one more thing to go wrong for no benefit.
 
     python3 app.py            # run it
-    python3 scripts/build_app.py   # package it into OceanMapper.app
+    python3 scripts/build_app.py   # package it into SharkGlobe.app
 """
 
 import http.server
@@ -52,12 +52,12 @@ class Delegate(NSObject):
     def applicationDidFinishLaunching_(self, notification):
         bar = AppKit.NSStatusBar.systemStatusBar()
         self.item = bar.statusItemWithLength_(AppKit.NSVariableStatusItemLength)
-        self.item.button().setTitle_("🌊")
+        self.item.button().setTitle_("🦈")
 
         menu = AppKit.NSMenu.alloc().init()
 
         title = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "Ocean Mapper", None, ""
+            "Shark Globe", None, ""
         )
         title.setEnabled_(False)
         menu.addItem_(title)
@@ -72,7 +72,7 @@ class Delegate(NSObject):
         menu.addItem_(AppKit.NSMenuItem.separatorItem())
 
         quit_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "Quit Ocean Mapper", "quit:", "q"
+            "Quit Shark Globe", "quit:", "q"
         )
         quit_item.setTarget_(self)
         menu.addItem_(quit_item)
@@ -96,7 +96,7 @@ def main():
 
     httpd = Server(("127.0.0.1", port), server.Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    print(f"  🌊 Ocean Mapper → {url}")
+    print(f"  🦈 Shark Globe → {url}")
 
     app = AppKit.NSApplication.sharedApplication()
     # Accessory, not Regular: it belongs in the menu bar, not the Dock or the

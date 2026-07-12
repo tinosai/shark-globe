@@ -1,4 +1,4 @@
-/* Ocean Mapper
+/* Shark Globe
    ────────────
    Mobile-first. The globe is the backdrop; the sheet is the interface.
 
@@ -360,6 +360,11 @@ html, body {
 }
 
 /* ── water column ───────────────────────────────────────────────────────── */
+
+/* `display: block` beats the `hidden` attribute (which is only display:none from
+   the UA stylesheet), so without this an empty chart frame sits on the landing
+   screen before anything has been clicked. */
+#watercolumn[hidden] { display: none; }
 
 #watercolumn {
   display: block;

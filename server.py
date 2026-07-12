@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ocean Mapper — static files, a terrain-tile proxy, and the species join.
+Shark Globe — static files, a terrain-tile proxy, and the species join.
 
 Why proxy the terrain tiles: they're served without CORS headers, so a browser
 can *draw* them but cannot read their pixels back out of a canvas (it gets
@@ -36,7 +36,7 @@ PORT = int(os.environ.get("PORT", 8000))
 # Writing into the bundle would fail — or worse, break the signature.
 if getattr(sys, "frozen", False):
     ROOT = sys._MEIPASS  # PyInstaller unpacks the bundled files here
-    CACHE = os.path.expanduser("~/Library/Caches/OceanMapper")
+    CACHE = os.path.expanduser("~/Library/Caches/SharkGlobe")
 else:
     ROOT = os.path.dirname(os.path.abspath(__file__))
     CACHE = os.path.join(ROOT, ".cache")
@@ -58,7 +58,7 @@ OBIS_API = "https://api.obis.org/v3/"
 # Selachii (sharks — not rays) + Cetacea (whales, dolphins, porpoises).
 TAXA = "368408,2688"
 
-UA = "ocean-mapper/0.1 (educational; contact: local)"
+UA = "shark-globe/0.1 (educational; contact: local)"
 TIMEOUT = 30
 
 def build_stamp() -> int:
@@ -316,7 +316,7 @@ if __name__ == "__main__":
     os.makedirs(CACHE, exist_ok=True)
     load_catalogue()
     with Server(("", PORT), Handler) as httpd:
-        print(f"\n  \033[36m🌊 Ocean Mapper\033[0m")
+        print(f"\n  \033[36m🦈 Shark Globe\033[0m")
         print(f"     this mac  \033[4mhttp://localhost:{PORT}\033[0m")
         lan = lan_address()
         if lan:

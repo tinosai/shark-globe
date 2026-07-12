@@ -1,5 +1,5 @@
 /**
- * Ocean Mapper.
+ * Shark Globe.
  *
  * Click the sea → we sound the seafloor at that exact point → ask OBIS what has
  * been recorded near it → draw the water column. Day/night is a pure re-render

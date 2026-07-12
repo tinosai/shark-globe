@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Package Ocean Mapper into a standalone OceanMapper.app.
+Package Shark Globe into a standalone SharkGlobe.app.
 
 Standalone means standalone: PyInstaller bundles the Python interpreter, so the
 app runs on a Mac with no Python, no pip, and no terminal. Everything the globe
@@ -10,7 +10,7 @@ inside the bundle.
     python3 -m pip install --user pyinstaller
     python3 scripts/build_app.py
 
-Output: dist/OceanMapper.app
+Output: dist/SharkGlobe.app
 """
 
 import os
@@ -20,7 +20,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist")
-APP = os.path.join(DIST, "OceanMapper.app")
+APP = os.path.join(DIST, "SharkGlobe.app")
 
 # The site itself. These get unpacked to sys._MEIPASS at run time, which is what
 # server.py uses as ROOT when frozen.
@@ -54,11 +54,11 @@ def main():
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name", "OceanMapper",
+        "--name", "SharkGlobe",
         "--windowed",                 # a .app bundle, no terminal window
         "--noconfirm",
         "--clean",
-        "--osx-bundle-identifier", "com.oceanmapper.app",
+        "--osx-bundle-identifier", "com.sharkglobe.app",
         *add_data,
         # PyInstaller's static analysis can't see these — AppKit is reached
         # through pyobjc's lazy loading, and server is imported by name.
@@ -91,7 +91,7 @@ def main():
     print(f"\n  ✓ {APP}  ({size})")
     print("\n  It is not code-signed, so the first launch needs:")
     print("      right-click → Open → Open")
-    print("  (or: xattr -dr com.apple.quarantine OceanMapper.app)")
+    print("  (or: xattr -dr com.apple.quarantine SharkGlobe.app)")
 
 
 if __name__ == "__main__":

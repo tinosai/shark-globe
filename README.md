@@ -1,13 +1,18 @@
-# Ocean Mapper
+# Shark Globe
 
-**Click anywhere in the sea. Find out how deep it is, and what swims there — by day, and by night.**
+**Click anywhere in the sea. Find out how deep it is — and which sharks and whales swim there, by day and by night.**
 
 ![The globe](docs/globe.png)
 
-Ocean Mapper is a bathymetric globe you can interrogate. Click a point at sea and
-it sounds the seafloor beneath it, then tells you which sharks and whales have
+Shark Globe is a bathymetric globe you can interrogate. Click a point at sea and
+it sounds the seafloor beneath it, then tells you which **sharks and whales** have
 been recorded nearby — arranged down a cross-section of the water column, at the
 depths they actually occupy.
+
+> **It is only about sharks and whales.** Not fish, not molluscs, not coral —
+> those were deliberately removed. **497 sharks** (the nine shark orders: no rays,
+> no skates, no chimaeras) and **42 cetaceans** (whales, dolphins, porpoises: no
+> seals, no manatees). 539 species, and nothing else.
 
 Then you press **Night**, and they move.
 
@@ -34,13 +39,13 @@ that happens on this planet, and almost nobody ever sees it.
 
 ## Running it
 
-**The easy way** — grab `OceanMapper.app` from
+**The easy way** — grab `SharkGlobe.app` from
 [Releases](../../releases), drag it to Applications, and launch it. It runs
 entirely on your machine; nothing is uploaded anywhere. It lives in the menu bar
-(🌊) and opens the globe in your browser.
+(🦈) and opens the globe in your browser.
 
 It isn't code-signed, so macOS will refuse the first launch. Right-click → **Open**
-→ **Open**. (Or `xattr -dr com.apple.quarantine OceanMapper.app`.)
+→ **Open**. (Or `xattr -dr com.apple.quarantine SharkGlobe.app`.)
 
 **From source** — needs Python 3.9+, nothing else:
 
@@ -69,9 +74,10 @@ zoom 4 a pre-baked whole-planet basemap takes over — 21 colours, banded into r
 bathymetric contours, 870 KB.
 
 **Species come from three places.** [OBIS](https://obis.org) says *what has been
-recorded where* (~140M marine occurrence records). FishBase and SeaLifeBase say
+recorded where* — queried for **Selachii** (sharks) and **Cetacea** (whales) only,
+so a coastal click fetches 50 taxa instead of 1,300. FishBase and SeaLifeBase say
 *how deep each animal lives*. And the day/night behaviour comes from… nowhere, so
-we had to build it. See below, because it matters.
+it had to be built. See below, because it matters.
 
 ---
 
@@ -132,7 +138,7 @@ python3 -m pip install --user duckdb Pillow numpy
 
 python3 scripts/build_species.py   # → data/species.json  (539 species, 130 KB)
 python3 scripts/build_basemap.py   # → data/basemap.png   (whole planet, 870 KB)
-python3 scripts/build_app.py       # → dist/OceanMapper.app
+python3 scripts/build_app.py       # → dist/SharkGlobe.app
 ```
 
 And to check nothing is broken — in a real browser, not by grepping:
@@ -182,7 +188,9 @@ filtered out (44,140 species → 539), and — importantly — what was **added*
   last real tiles are magnified rather than invented.
 - **Whales dominate the rankings** in many places, because whale-watching boats log
   everything they see and sharks are underwater. Use the **Sharks** filter.
-- **Rays, skates and chimaeras are excluded** — they're not sharks. So are seals
-  and manatees, which are not whales.
+- **Sharks and whales only, by design.** Rays, skates and chimaeras are excluded —
+  they aren't sharks. So are seals and manatees, which aren't whales. If you want
+  the other 43,601 marine species back, one set in `scripts/build_species.py`
+  (`KEEP_ORDERS`) restores them.
 - **It needs the internet** for OBIS and for terrain tiles it hasn't cached yet.
   Once cached, it works offline.
