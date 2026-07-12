@@ -1,0 +1,13 @@
+# Tile cache. Grows to hundreds of MB — it is a cache, not source.
+.cache/
+OceanMapper/
+
+# Build output. The .app ships as a GitHub Release asset, not in the tree.
+build/
+dist/
+*.spec
+
+__pycache__/
+*.pyc
+.DS_Store
+.venv/

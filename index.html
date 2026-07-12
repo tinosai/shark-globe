@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the globe run under the notch and the home indicator;
+     the CSS pays that back with safe-area insets so nothing lands under them. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#04070D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Ocean Mapper</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+
+<!-- No dependencies at all. The globe is raw WebGL2 (src/gl/); deck.gl is gone
+     (it re-tessellated every polygon on each zoom and ran a GPU picking pass on
+     every pointer move — that was the flicker), and so is h3-js, along with the
+     hexagons it existed to compute. -->
+</head>
+
+<body data-phase="day">
+
+<canvas id="deck"></canvas>
+
+<!-- ── top bar: identity + the one mode switch ─────────────────────────────── -->
+<header id="topbar">
+  <h1>Ocean&nbsp;Mapper</h1>
+
+  <div id="phase" role="group" aria-label="Time of day">
+    <button data-phase="day" class="is-active" aria-pressed="true">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2"/><g stroke-linecap="round"><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13"/></g></svg>
+      Day
+    </button>
+    <button data-phase="night" aria-pressed="false">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7z"/></svg>
+      Night
+    </button>
+  </div>
+</header>
+
+<!-- ── the hint that teaches the one thing you must know ───────────────────── -->
+<p id="hint">Tap anywhere in the ocean</p>
+
+<!-- Pinch handles zoom; these reach the places a pinch can't take you.
+     The Arctic is ocean and the Antarctic is rock — that contrast is worth seeing. -->
+<div id="controls" role="group" aria-label="Globe">
+  <button data-cam="in" aria-label="Zoom in">＋</button>
+  <button data-cam="out" aria-label="Zoom out">−</button>
+  <button data-cam="north" aria-label="North Pole">N</button>
+  <button data-cam="south" aria-label="South Pole">S</button>
+  <button data-cam="reset" aria-label="Reset view">⌖</button>
+</div>
+
+<!-- So "the hexagons don't scale" becomes a number we can both read. -->
+<div id="hud"></div>
+
+<!-- The clicked point. A DOM pin, not geometry: the glow and the pulse are CSS,
+     which the compositor animates without redrawing the globe at all. -->
+<div id="ping" hidden><span></span></div>
+
+<!-- ── bottom sheet ───────────────────────────────────────────────────────── -->
+<section id="sheet" aria-label="Location details">
+  <button data-sheet-grip id="grip" aria-label="Expand"><span></span></button>
+
+  <div data-sheet-header id="sheet-header">
+    <div id="readout">
+      <div class="readout-depth">
+        <span id="depth">—</span><span class="unit" id="depth-unit"></span>
+      </div>
+      <div class="readout-meta">
+        <span id="zone" class="zone">Pick a piece of ocean</span>
+        <span id="coords" class="coords"></span>
+      </div>
+    </div>
+    <div id="tally" class="tally" hidden>
+      <strong id="tally-n">0</strong><span>species</span>
+      <em id="tally-mig"></em>
+    </div>
+
+    <!-- Sounding the seafloor, then asking OBIS. Both take a moment. -->
+    <div id="spinner" hidden aria-label="Loading" role="status"><span></span></div>
+  </div>
+
+  <div data-sheet-body id="sheet-body">
+    <p id="status" class="status">Drag to spin the globe, pinch or double-tap to
+      zoom. Tap any point at sea and you'll get the depth beneath it, and the
+      sharks and whales recorded there.</p>
+
+    <svg id="watercolumn" role="img" aria-label="Water column cross-section" hidden></svg>
+
+    <div id="filters" class="filters"></div>
+
+    <ul id="species-list" class="species-list"></ul>
+
+    <!-- The long tail. Recorded here, but you'd be lucky. -->
+    <details id="rare" hidden>
+      <summary>
+        <span class="rare-label">Less likely</span>
+        <span class="rare-count" id="rare-count">0</span>
+        <span class="rare-chev">›</span>
+      </summary>
+      <ul id="rare-list" class="species-list"></ul>
+    </details>
+
+    <div id="others" class="others" hidden></div>
+
+    <footer class="sources">
+      Depth: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">terrain tiles</a> (GEBCO/SRTM).
+      Occurrences: <a href="https://obis.org" target="_blank" rel="noopener">OBIS</a>.
+      Depth ranges: <a href="https://www.fishbase.org" target="_blank" rel="noopener">FishBase</a> /
+      <a href="https://www.sealifebase.org" target="_blank" rel="noopener">SeaLifeBase</a>, adapted under
+      <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener">CC&#8209;BY&#8209;NC&nbsp;4.0</a>.
+      Text: <a href="https://en.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>.
+      Day/night depths are <strong>not</strong> from FishBase — they are measured for 48
+      sharks from tagging literature and <em>inferred</em> for the rest.
+    </footer>
+  </div>
+</section>
+
+<!-- ── species page ───────────────────────────────────────────────────────── -->
+<section id="wiki" aria-live="polite" hidden>
+  <button id="wiki-back">← Back</button>
+  <div id="wiki-body"></div>
+</section>
+
+<!-- A module that throws on import fails silently: no UI, no clue, just a dead
+     page. Surface it instead — a broken app should say why it's broken. -->
+<div id="boom" hidden></div>
+<script>
+  function boom(what) {
+    const el = document.getElementById('boom');
+    el.hidden = false;
+    el.textContent = what;
+  }
+  addEventListener('error', (e) => boom(e.message || String(e.error)));
+  addEventListener('unhandledrejection', (e) => boom(String(e.reason)));
+</script>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

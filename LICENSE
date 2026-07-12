@@ -1,0 +1,54 @@
+MIT License
+
+Copyright (c) 2026 Ocean Mapper contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+────────────────────────────────────────────────────────────────────────────────
+
+THIS LICENCE COVERS THE CODE ONLY.
+
+The data bundled in this repository is NOT MIT-licensed and carries its own
+terms:
+
+  data/species.json   A DERIVATIVE WORK of FishBase and SeaLifeBase, used under
+                      CC-BY-NC 4.0 — attribution required, NON-COMMERCIAL ONLY.
+
+                        Froese, R. and D. Pauly, eds. (2025). FishBase.
+                        https://www.fishbase.org
+                        Palomares, M.L.D. and D. Pauly, eds. (2025). SeaLifeBase.
+                        https://www.sealifebase.org
+
+                      Licence: https://creativecommons.org/licenses/by-nc/4.0/
+
+                      Changes made: filtered from 44,140 species to 539 (sharks
+                      and cetaceans only); kept only depth range, habitat and
+                      taxonomy; restructured. The day/night/dvm fields were ADDED
+                      by us and are NOT FishBase data — see
+                      data/species.SOURCES.md.
+
+  data/basemap.png    Derived from the AWS Terrain Tiles open dataset
+                      (GEBCO bathymetry, SRTM topography). Open.
+
+  Occurrence records fetched at runtime from OBIS (https://obis.org) are CC-BY.
+  Species text fetched at runtime from Wikipedia is CC-BY-SA.
+
+If you intend to use this commercially, you must replace data/species.json with
+a source that permits it. The depth range of every species in the app comes from
+FishBase/SeaLifeBase.
