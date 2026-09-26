@@ -138,6 +138,7 @@ python3 -m pip install --user duckdb Pillow numpy
 
 python3 scripts/build_species.py   # → data/species.json  (539 species, 130 KB)
 python3 scripts/build_basemap.py   # → data/basemap.png   (whole planet, 870 KB)
+python3 scripts/build_water.py     # → data/water.bin     (sea / land / lake map, 420 KB)
 python3 scripts/build_app.py       # → dist/SharkGlobe.app
 ```
 
@@ -160,6 +161,7 @@ dry land.
 | What | Source | Licence |
 |---|---|---|
 | Depth / terrain | [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (GEBCO, SRTM) | Open |
+| Sea / land / lake map | [Natural Earth](https://www.naturalearthdata.com) 1:10m land, minor islands, lakes | Public domain |
 | Occurrences | [OBIS](https://obis.org) | CC-BY |
 | Depth ranges | [FishBase](https://www.fishbase.org) / [SeaLifeBase](https://www.sealifebase.org) (Froese & Pauly; Palomares & Pauly, 2025) | **[CC-BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)** |
 | Species text | [Wikipedia](https://en.wikipedia.org) | CC-BY-SA |
@@ -194,3 +196,28 @@ filtered out (44,140 species → 539), and — importantly — what was **added*
   (`KEEP_ORDERS`) restores them.
 - **It needs the internet** for OBIS and for terrain tiles it hasn't cached yet.
   Once cached, it works offline.
+- **"Below sea level" is not the same as "sea".** The Caspian, the Dead Sea, the
+  Salton Sea, Qattara and a Dutch polder are all below sea level, and none of them
+  has sharks. A click counts as ocean only if it's drawn as sea on Natural Earth's
+  map, or if a flood fill through the terrain can get from it to drawn sea. The
+  species search is trimmed the same way, to water connected to the click (see
+  `src/reach.js`). What's left:
+  - **Water the terrain tiles leave out can't be clicked.** Much of the Sognefjord
+    and of Scotland's west-coast sea lochs read as land in the tiles, so the app
+    says *dry land* there. That predates the water map, which draws them as sea.
+  - **A polder within ~3.5 km of the open sea can still read as sea.** Right at
+    the coast the map's shoreline is too coarse to trust, so the thin dykes there
+    decide, and the terrain can't see them.
+  - **A shallow fjord arm the terrain can't connect**, with no drawn sea within
+    10 km, reads as cut off.
+
+## Next steps
+
+- Make water the terrain leaves out clickable: where the map draws sea but the
+  tiles read land, show the point as sea of unknown depth instead of *dry land*.
+- Run the species search's 25 / 100 / 400 km queries in parallel instead of one
+  after another. A sparsely surveyed click currently waits for up to three OBIS
+  round trips in a row.
+- Revisit the terrain zoom rounding in `Globe.tileZoom`. It often picks the next
+  zoom up, which is four times the tiles, for a small gain in sharpness on retina
+  screens.

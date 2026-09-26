@@ -11,6 +11,7 @@
  */
 
 import { SHARKS } from './sharks.js';
+import { searchArea } from '../reach.js';
 
 /** Curated records, keyed by name, normalised into the catalogue's shape. */
 const CURATED = new Map(
@@ -39,24 +40,25 @@ const CURATED = new Map(
 const cache = new Map();
 
 /**
- * A box of `radiusKm` around a point, as WKT.
+ * A box of `radiusKm` around a point, in degrees.
  *
  * OBIS wants a polygon, and a click is a point — so we ask "what lives near
  * here". The radius has to be a real area: a survey ship samples a station, not
  * a coordinate, and a box tighter than a few tens of km would come back empty
- * almost everywhere in the open ocean.
+ * almost everywhere in the open ocean. searchArea() then trims it to the water
+ * the click actually connects to.
  */
 function boxAround(lon, lat, radiusKm) {
   const dLat = radiusKm / 110.6;
   const cos = Math.max(0.05, Math.cos((lat * Math.PI) / 180));
   const dLon = Math.min(179, radiusKm / (110.6 * cos));
 
-  const w = (lon - dLon).toFixed(4);
-  const e = (lon + dLon).toFixed(4);
-  const s = Math.max(-89.9, lat - dLat).toFixed(4);
-  const n = Math.min(89.9, lat + dLat).toFixed(4);
-
-  return `POLYGON((${w} ${s}, ${e} ${s}, ${e} ${n}, ${w} ${n}, ${w} ${s}))`;
+  return {
+    w: lon - dLon,
+    e: lon + dLon,
+    s: Math.max(-89.9, lat - dLat),
+    n: Math.min(89.9, lat + dLat),
+  };
 }
 
 async function query(wkt) {
@@ -84,10 +86,12 @@ export function lifeAt(lon, lat) {
     let radiusKm = RADII[0];
 
     // Most of the open ocean has never been surveyed. Rather than show an empty
-    // panel and imply the sea is empty, widen the search until it isn't.
+    // panel and imply the sea is empty, widen the search until it isn't — but
+    // only through water. A plain box widened straight over land: 100 km from the
+    // Dead Sea it reached the Mediterranean and brought back its dolphins.
     for (const r of RADII) {
       radiusKm = r;
-      data = await query(boxAround(lon, lat, r));
+      data = await query(await searchArea(lon, lat, r, boxAround(lon, lat, r)));
       if (data.total >= 3) break;
     }
 

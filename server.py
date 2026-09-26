@@ -17,12 +17,14 @@ a few hundred records instead of the whole catalogue.
 """
 
 import hashlib
+import http.client
 import http.server
 import json
 import os
 import re
 import socketserver
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -99,6 +101,45 @@ def cache_path(key: str, ext: str) -> str:
     return os.path.join(CACHE, f"{h}{ext}")
 
 
+# One upstream connection per host, per server thread, kept open between requests.
+#
+# urllib opens a fresh connection for every request, so each cold tile paid for
+# DNS, TCP and a TLS handshake before a single byte of it moved — roughly half of
+# the ~0.46 s a tile took. The browser holds its connections to us open (HTTP/1.1
+# below), so each of its six connections keeps one server thread, and that
+# thread keeps one warm connection to S3.
+_upstream = threading.local()
+
+
+def get(url: str) -> bytes:
+    """GET over a reused connection. Raises HTTPError on a non-200, like urlopen."""
+    u = urllib.parse.urlsplit(url)
+    pool = getattr(_upstream, "pool", None)
+    if pool is None:
+        pool = _upstream.pool = {}
+    path = u.path + (f"?{u.query}" if u.query else "")
+
+    for attempt in (0, 1):
+        conn = pool.get(u.netloc)
+        if conn is None:
+            cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
+            conn = pool[u.netloc] = cls(u.netloc, timeout=TIMEOUT)
+        try:
+            conn.request("GET", path, headers={"User-Agent": UA})
+            resp = conn.getresponse()
+            body = resp.read()
+        except (http.client.HTTPException, OSError):
+            # The far end closed an idle connection. Reconnect once, then give up.
+            conn.close()
+            pool.pop(u.netloc, None)
+            if attempt:
+                raise
+            continue
+        if resp.status != 200:
+            raise urllib.error.HTTPError(url, resp.status, resp.reason, resp.headers, None)
+        return body
+
+
 def fetch(url: str, key: str, ext: str) -> bytes:
     """Fetch a URL, memoising the response body on disk forever."""
     path = cache_path(key, ext)
@@ -106,9 +147,7 @@ def fetch(url: str, key: str, ext: str) -> bytes:
         with open(path, "rb") as fh:
             return fh.read()
 
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        body = resp.read()
+    body = get(url)
 
     os.makedirs(CACHE, exist_ok=True)
     tmp = path + ".part"
@@ -119,6 +158,10 @@ def fetch(url: str, key: str, ext: str) -> bytes:
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    # Keep-alive. Under HTTP/1.0 every tile was a new TCP connection. Every
+    # response here carries a Content-Length, which is what 1.1 requires.
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
 

@@ -7,13 +7,12 @@
  * Below sea level that number goes negative, which means the same lookup that
  * tells us "this is 4,200 m of water" also tells us "this is land, don't draw a
  * hexagon here". We decode each tile once into an Int16Array (metres, rounded)
- * and keep it; a decoded tile is 128 KB and there are rarely more than a few
- * dozen live at once.
+ * and keep the most recent few hundred; a decoded tile is 128 KB.
  */
 
 import { colorFor } from './palette.js';
 
-const TILE = 256;
+export const TILE = 256;
 const NODATA = 32767;
 
 /**
@@ -36,6 +35,9 @@ const NODATA = 32767;
 export const MAX_TILE_ZOOM = 10;
 
 const tiles = new Map(); // "z/x/y" -> Int16Array | Promise | null(failed)
+
+/** Decoded tiles kept in memory (~50 MB). It used to be every tile ever seen. */
+const MAX_GRIDS = 400;
 
 /* ---------------------------------------------------------------- projection */
 
@@ -67,6 +69,113 @@ function decode(bitmap) {
   return out;
 }
 
+/* -------------------------------------------------------------- scheduling */
+
+/**
+ * Tile requests go through one queue, most important first.
+ *
+ * The browser opens at most six connections to a host and serves requests in
+ * the order they were made. Every step of a zoom asked for a full screen of
+ * tiles, so one gesture from orbit to the coast queued 147 requests for a view
+ * that needed 20 — and the view, and any click made meanwhile, waited behind all
+ * the tiles for places already scrolled past. Twelve seconds, measured.
+ *
+ * So requests wait here instead, where we can reorder them: a click's depth
+ * lookup jumps the queue (URGENT), view tiles go centre-first, and a tile the
+ * view no longer wants is dropped before it's ever fetched (see dropQueued).
+ */
+export const URGENT = 0;
+const MAX_INFLIGHT = 6; // the browser's own per-host limit; more would only queue there
+
+const queue = new Map(); // "z/x/y" -> job, not yet started
+let inflight = 0;
+
+/** Returned by load() when a queued view tile is dropped. Not a failure. */
+export const DROPPED = undefined;
+
+function pump() {
+  while (inflight < MAX_INFLIGHT && queue.size) {
+    let job = null;
+    for (const j of queue.values()) if (!job || j.priority < job.priority) job = j;
+    queue.delete(job.key);
+    inflight++;
+    fetchGrid(job).then(job.resolve).finally(() => {
+      inflight--;
+      pump();
+    });
+  }
+}
+
+async function fetchGrid({ key, z, x, y }) {
+  try {
+    const res = await fetch(`/api/tile/${z}/${x}/${y}.png`);
+    if (!res.ok) throw new Error(`tile ${key} → ${res.status}`);
+    const grid = decode(await createImageBitmap(await res.blob()));
+    remember(key, grid);
+    return grid;
+  } catch {
+    tiles.set(key, null); // negative-cache: don't hammer a tile that 404s
+    return null;
+  }
+}
+
+/** Keep a decoded tile, forgetting the least recently used past MAX_GRIDS. */
+function remember(key, grid) {
+  tiles.delete(key);
+  tiles.set(key, grid);
+  if (tiles.size <= MAX_GRIDS) return;
+  for (const [k, v] of tiles) {
+    if (tiles.size <= MAX_GRIDS) break;
+    if (!(v instanceof Promise)) tiles.delete(k); // never drop one being fetched
+  }
+}
+
+/**
+ * Drop every queued view tile that isn't in `keep`.
+ *
+ * Only view tiles: anything a click is waiting on is URGENT and stays. A dropped
+ * tile resolves to DROPPED and is forgotten, so asking again fetches it afresh.
+ */
+export function dropQueued(keep) {
+  for (const [key, job] of queue) {
+    if (job.priority === URGENT || keep.has(key)) continue;
+    queue.delete(key);
+    tiles.delete(key);
+    job.resolve(DROPPED);
+  }
+}
+
+/**
+ * A tile's elevations, decoded to metres.
+ *
+ * @param priority  URGENT for anything a person is waiting on; for view tiles,
+ *                  1 + distance from the screen centre. Asking again for a tile
+ *                  already queued can only raise its priority, never lower it.
+ */
+export function load(z, x, y, priority = URGENT) {
+  const key = `${z}/${x}/${y}`;
+  const hit = tiles.get(key);
+
+  if (hit instanceof Promise) {
+    const job = queue.get(key);
+    if (job && priority < job.priority) job.priority = priority;
+    return hit;
+  }
+  if (hit !== undefined) {
+    if (hit) remember(key, hit); // most recently used
+    return Promise.resolve(hit);
+  }
+
+  const promise = new Promise((resolve) => {
+    queue.set(key, { key, z, x, y, priority, resolve });
+  });
+  tiles.set(key, promise);
+  pump();
+  return promise;
+}
+
+/* ---------------------------------------------------------------- colouring */
+
 /**
  * A terrain tile, decoded and coloured, ready to be a texture.
  *
@@ -78,15 +187,24 @@ function decode(bitmap) {
  *
  * Decoding here, on the CPU, turns the tile into ordinary colour — which the GPU
  * can then filter smoothly. It costs ~65k pixels of work per tile, once.
+ *
+ * Resolves to null if the tile failed or was dropped from the queue.
  */
 const colored = new Map();
 
-export function tileColor(z, x, y) {
+export function tileColor(z, x, y, priority = URGENT) {
   const key = `${z}/${x}/${y}`;
-  if (colored.has(key)) return colored.get(key);
+  if (colored.has(key)) {
+    if (tiles.get(key) instanceof Promise) load(z, x, y, priority); // still queued: re-rank
+    return colored.get(key);
+  }
 
   const job = (async () => {
-    const grid = await load(z, x, y);
+    const grid = await load(z, x, y, priority);
+    if (grid === DROPPED) {
+      if (colored.get(key) === job) colored.delete(key); // not a failure: ask again later
+      return null;
+    }
     if (!grid) return null;
 
     const px = new Uint8ClampedArray(TILE * TILE * 4);
@@ -104,28 +222,6 @@ export function tileColor(z, x, y) {
   colored.set(key, job);
   if (colored.size > 300) colored.delete(colored.keys().next().value);
   return job;
-}
-
-async function load(z, x, y) {
-  const key = `${z}/${x}/${y}`;
-  const hit = tiles.get(key);
-  if (hit !== undefined) return hit;
-
-  const promise = (async () => {
-    try {
-      const res = await fetch(`/api/tile/${z}/${x}/${y}.png`);
-      if (!res.ok) throw new Error(`tile ${key} → ${res.status}`);
-      const grid = decode(await createImageBitmap(await res.blob()));
-      tiles.set(key, grid);
-      return grid;
-    } catch {
-      tiles.set(key, null); // negative-cache: don't hammer a tile that 404s
-      return null;
-    }
-  })();
-
-  tiles.set(key, promise);
-  return promise;
 }
 
 /**
@@ -180,12 +276,3 @@ export async function elevationAt(lon, lat, z = 8) {
   }
   return null;
 }
-
-/**
- * A box this big isn't worth prefetching — we'd be asking for more tiles than
- * the whole prefetch is meant to save. Near the poles the longitude span goes
- * to infinity (cos(lat) → 0), so without this a warm-up at high latitude could
- * try to fetch the entire planet at full detail.
- */
-const MAX_PRELOAD_TILES = 180;
-

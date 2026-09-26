@@ -13,7 +13,8 @@
  */
 
 import { Renderer } from './gl/renderer.js';
-import { elevationAt, tileColor, MAX_TILE_ZOOM } from './bathymetry.js';
+import { elevationAt, tileColor, dropQueued, project, MAX_TILE_ZOOM } from './bathymetry.js';
+import { landlocked } from './reach.js';
 
 
 const POLE_LIMIT = 89.5;
@@ -150,6 +151,7 @@ export class Globe {
       // sharp image with a blurrier one. Zoomed out, the basemap IS the right
       // answer; that's what it's for.
       if (z <= BASEMAP_EQUIV_Z || range.count <= 0) {
+        dropQueued(new Set());
         this.gl.keepOnly(new Set());
         this._streamZ = 0;
         this.requestDraw();
@@ -158,24 +160,36 @@ export class Globe {
 
       const { n, x0, x1, y0, y1 } = range;
       const wanted = new Set();
-      const jobs = [];
+      const missing = [];
 
+      // Centre outward: the middle of the screen is where you're looking, and
+      // where you're about to click.
+      const c = project(this.viewState.longitude, this.viewState.latitude, z);
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const tx = ((x % n) + n) % n;
           const key = `${z}/${tx}/${y}`;
           wanted.add(key);
-          if (this.gl.hasPatch(key)) continue;
-          jobs.push(
-            tileColor(z, tx, y).then((img) => {
-              if (img && this._streamZ === z) {
-                this.gl.addPatch(key, z, tx, y, img);
-                this.requestDraw();
-              }
-            }),
-          );
+          if (!this.gl.hasPatch(key)) {
+            missing.push({ key, tx, y, d: Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y) });
+          }
         }
       }
+      missing.sort((a, b) => a.d - b.d);
+
+      // Whatever the last view queued and this one doesn't need never gets
+      // fetched. Without this, every step of a zoom left a screenful of tiles in
+      // the queue ahead of the ones you're actually looking at.
+      dropQueued(wanted);
+
+      const jobs = missing.map(({ key, tx, y, d }) =>
+        tileColor(z, tx, y, 1 + d).then((img) => {
+          if (img && this._streamZ === z) {
+            this.gl.addPatch(key, z, tx, y, img);
+            this.requestDraw();
+          }
+        }),
+      );
 
       this._streamZ = z;
       await Promise.all(jobs);
@@ -359,8 +373,8 @@ export class Globe {
   /**
    * Ray → sphere → lon/lat → how deep is it there?
    *
-   * That's the whole interaction. If the point is above sea level we say so
-   * rather than silently doing nothing — a click that produces no response is
+   * That's the whole interaction. If the point is above sea level, or below it
+   * but walled off from the ocean, we say so rather than silently doing nothing — a click that produces no response is
    * indistinguishable from a broken app.
    */
   async click(e) {
@@ -381,6 +395,16 @@ export class Globe {
     }
     if (elevation >= 0) {
       this.onSelect?.({ lon, lat, depth: null, elevation, reason: 'land' });
+      return;
+    }
+
+    // Below sea level isn't the same as sea: the Caspian, the Dead Sea and the
+    // Salton Sea all are, and so is a Dutch polder. Only water land doesn't wall
+    // in counts.
+    const enclosed = await landlocked(lon, lat, elevation);
+    if (this._token !== token) return;
+    if (enclosed) {
+      this.onSelect?.({ lon, lat, depth: null, elevation, reason: 'landlocked' });
       return;
     }
 

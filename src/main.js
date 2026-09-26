@@ -355,11 +355,13 @@ async function select(point) {
     dom.spinner.hidden = true;
     dom.depth.textContent = '—';
     dom.unit.textContent = '';
-    dom.zone.textContent = reason === 'land' ? 'Dry land' : 'No data';
-    dom.status.textContent =
-      reason === 'land'
-        ? 'That point is above sea level. Only the ocean is clickable.'
-        : 'No elevation data for that point.';
+    dom.zone.textContent = { land: 'Dry land', landlocked: 'Cut off from the sea' }[reason] ?? 'No data';
+    dom.status.textContent = {
+      land: 'That point is above sea level. Only the ocean is clickable.',
+      landlocked:
+        `That point is ${Math.round(-point.elevation)} m below sea level, but land walls it off ` +
+        'from the ocean — a lake, a polder or a dry basin, not the sea. No shark or whale can swim there.',
+    }[reason] ?? 'No elevation data for that point.';
     return;
   }
 
@@ -389,7 +391,7 @@ async function select(point) {
 
     if (!life.total) {
       dom.status.textContent =
-        'No records within 400 km. Much of the open ocean has never been surveyed — absence of data is not absence of life.';
+        'No records within 400 km through connected water. Much of the open ocean has never been surveyed — absence of data is not absence of life.';
       return;
     }
 
@@ -406,7 +408,7 @@ async function select(point) {
     const sparse = shownAll.length <= 6 || thinHead >= Math.ceil(head.length / 2);
 
     dom.status.innerHTML =
-      `Recorded within ${life.radiusKm} km of this point, ordered by how often. ` +
+      `Recorded within ${life.radiusKm} km of this point, in water connected to it, ordered by how often. ` +
       `Tap any species to read about it.` +
       (sparse
         ? `<span class="caveat">The open sea is barely surveyed, and most of these
