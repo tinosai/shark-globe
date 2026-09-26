@@ -84,6 +84,14 @@ def main():
         check=False, capture_output=True,
     )
 
+    # Editing the Info.plist breaks the ad-hoc signature PyInstaller just made, so
+    # sign again. v0.1.0 shipped without this: `codesign -v` called the bundle
+    # modified, and on Apple Silicon macOS may call a bundle like that "damaged"
+    # rather than offering right-click → Open. Ad-hoc ("-") is still unsigned as
+    # far as Gatekeeper is concerned, just intact.
+    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", APP], check=True, capture_output=True)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", APP], check=True)
+
     size = subprocess.run(
         ["du", "-sh", APP], capture_output=True, text=True
     ).stdout.split()[0]
